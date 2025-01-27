@@ -16,6 +16,31 @@ from pydantic import BaseModel
 import os
 import logging
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+# Enable CORS for your frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Allow requests from your frontend domain
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],  # Allow methods
+    allow_headers=["*"],  # Allow headers
+)
+
+@app.get("/current-song")
+async def get_current_song():
+    # Your logic to return song data
+    return {"song_name": "Song Title", "artist": "Artist", "image_url": "image_url", "progress_ms": 12000, "duration_ms": 240000}
+
+@app.post("/seek")
+async def update_song_progress(progress_ms: int):
+    # Your logic to update the song progress
+    return {"message": "Progress updated"}
+
+
 # Load environment variables
 load_dotenv()
 
@@ -164,31 +189,6 @@ async def previous_song(request: PlaybackRequest, sp: Spotify = Depends(get_spot
         logger.error(f"Error during previous song: {e}")
         raise HTTPException(status_code=500, detail=f"Server error: {e}")
 
-@app.get("/current-song", dependencies=[Depends(get_api_key)])
-async def get_current_song(sp: Spotify = Depends(get_spotify_client)):
-    """Get information about the currently playing song."""
-    try:
-        playback = sp.current_playback()
-        if not playback or not playback.get("is_playing"):
-            return {"message": "No song is currently playing."}
-        
-        item = playback["item"]
-        song_info = {
-            "song_name": item["name"],
-            "artist": ", ".join(artist["name"] for artist in item["artists"]),
-            "album": item["album"]["name"],
-            "duration_ms": item["duration_ms"],
-            "progress_ms": playback["progress_ms"],
-            "image_url": item["album"]["images"][0]["url"]  # Get the largest album image
-        }
-        return song_info
-    except spotipy.exceptions.SpotifyException as e:
-        logger.error(f"Spotify error: {e}")
-        raise HTTPException(status_code=400, detail=f"Spotify error: {e}")
-    except Exception as e:
-        logger.error(f"Error fetching current song: {e}")
-        raise HTTPException(status_code=500, detail=f"Server error: {e}")
-
 @app.get("/device", dependencies=[Depends(get_api_key)])
 async def get_devices(sp: Spotify = Depends(get_spotify_client)):
     """Get a list of available devices."""
@@ -208,17 +208,3 @@ async def get_devices(sp: Spotify = Depends(get_spotify_client)):
         logger.error(f"Error fetching devices: {e}")
         raise HTTPException(status_code=500, detail=f"Server error: {e}")
 
-
-@app.post("/seek", dependencies=[Depends(get_api_key)])
-async def seek_song(request: PlaybackRequest, sp: Spotify = Depends(get_spotify_client)):
-    """Seek to a specific position in the song."""
-    try:
-        # Seek to the new position (progress_ms in the request)
-        sp.seek_track(position_ms=request.progress_ms, device_id=request.device_id)
-        return {"message": f"Playback position set to {request.progress_ms} ms."}
-    except spotipy.exceptions.SpotifyException as e:
-        logger.error(f"Spotify error: {e}")
-        raise HTTPException(status_code=400, detail=f"Spotify error: {e}")
-    except Exception as e:
-        logger.error(f"Error during seek: {e}")
-        raise HTTPException(status_code=500, detail=f"Server error: {e}")
